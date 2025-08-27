@@ -1,0 +1,194 @@
+# This is a script that will create the exposure wind maps that are needed to run Biomass Hurricane v2 and v3.
+# This script was originally created by James Lamping (University of Oregon) and Trevor Carter (Colorado State University). This current version was adapted
+# by Louis Goodall (North Carolina State University)
+
+```{r}
+library(raster)
+library(terra)
+library(sf)
+
+# Below are the main functions used to compute the different exposure bins. Version 1 is for the
+# raster package only. The second verison is for terra and raster.
+# Raster package version
+windout.iter.1 <- function(dem, deflect, angles, max.dist) {
+#note that the dem raster must be in planar coordinates
+
+#for smaller datasets:
+# dem <- readAll(dem) 	#if in memory
+res <- res(dem)
+
+# do not ignore the case where x and y resolution are not equal
+stopifnot(all.equal(res[1], res[2]))
+xr <- res[1]
+
+#number of distances to check, basically goes every third cell for speed.
+num.dist <- round(max.dist / xr / 3)
+distance <- seq(xr, max.dist, length.out=num.dist)
+result <- list()
+j <- 1
+angle <- angles
+
+for (d in deflect) {
+	midrow <- cellFromRow(dem,rownr=1)	#note this does the top one
+	elev <- extract(dem,midrow)
+	coords <- xyFromCell(dem, midrow)
+
+	radangle <- (angle+90) * pi/180  #convert to radians.
+	dcosangle <- -cos(radangle) * distance
+	dsinangle <- sin(radangle) * distance
+	x <- apply(coords[,1,drop=FALSE], 1, function(j) j + dcosangle)
+	y <- apply(coords[,2,drop=FALSE], 1, function(j) j + dsinangle)
+	xy <- cbind(as.vector(x), as.vector(y))
+
+	comp.elev <- extract(dem, xy)
+	comp.elev <- matrix(comp.elev, ncol=num.dist, byrow=TRUE)
+	comp.elev <- comp.elev - elev
+	comp.elev <- t(t(comp.elev) / distance)
+	#notAllNA <- rowSums(is.na(comp.elev)) != num.dist
+	ang <- atan(comp.elev) * (180 / pi)
+
+	r <- apply(ang,1,max)
+
+	r <- r<=d
+	result[[j]] <- r*1
+	j <- j+1
+	}
+
+output <-simplify2array(result)
+output <- apply(output,1,sum)
+output <- output+1
+outputs <- list()
+outputs[[1]] <- output
+outputs[[2]] <- coords
+return(outputs)
+}
+
+# Raster and terra version
+windout.iter.2 <- function(dem, deflect, angles, max.dist) {
+  res <- res(dem)
+  stopifnot(all.equal(res[1], res[2]))
+  xr <- res[1]
+  
+  num.dist <- round(max.dist / xr / 3)
+  distance <- seq(xr, max.dist, length.out=num.dist)
+  result <- list()
+  j <- 1
+  angle <- angles
+  
+  for (d in deflect) {
+    midrow <- cellFromRow(dem, rownr=1)
+    elev <- extract(dem, midrow)
+    if (is.data.frame(elev)) elev <- elev[,1]
+    coords <- xyFromCell(dem, midrow)
+    
+    radangle <- (angle+90) * pi/180
+    dcosangle <- -cos(radangle) * distance
+    dsinangle <- sin(radangle) * distance
+    x <- apply(coords[,1,drop=FALSE], 1, function(j) j + dcosangle)
+    y <- apply(coords[,2,drop=FALSE], 1, function(j) j + dsinangle)
+    xy <- cbind(as.vector(x), as.vector(y))
+    
+    comp.elev <- extract(dem, xy)
+    if (is.data.frame(comp.elev)) comp.elev <- comp.elev[,1]
+    comp.elev <- matrix(comp.elev, ncol=num.dist, byrow=TRUE)
+    comp.elev <- comp.elev - elev
+    comp.elev <- t(t(comp.elev) / distance)
+    
+    ang <- atan(comp.elev) * (180 / pi)
+    r <- apply(ang,1,max)
+    r <- r<=d
+    result[[j]] <- r*1
+    j <- j+1
+  }
+  
+  output <- simplify2array(result)
+  output <- apply(output,1,sum)
+  output <- output+1
+  outputs <- list(output, coords)
+  return(outputs)
+}
+```
+
+
+
+```{r}
+# Read in raster then crop, mask, and clean. The template raster here is the exact dimensions, crs, resolution
+# and extent of the landscape that I will be using for the proper simulation runs.
+templateRaster <- rast("D:/Landis Outputs/Raster Template/templateRaster.tif")
+# demNC <- rast("C:/Users/lagoodal/Desktop/Dissertation Stuff/Hurricane/WIND TESTS/output_hh.tif")
+# Piedmont.shp <- st_read("C:/Users/lagoodal/Desktop/All Raster Layers/standsraster/Clipped Shapefile/clippedPiedmont.shp") %>%
+#   st_transform(crs(demNC))
+# demNC <- crop(demNC, vect(Piedmont.shp)) %>% 
+#          mask(vect(Piedmont.shp)) %>% 
+#          project(templateRaster, method = "near")
+
+demNC <- rast("D:/Historical_LANDIS/demNC.tif")
+demNC[is.na(demNC)] <- 0
+
+# Here we define the wind model parameters:
+max.dist <- 5000                            # search distance for wind exposure
+deflect <- c(1,3,5,7,9,11,13,14)            # terrain deflection categories
+angles <- c(135,180,225,270)                # wind direction angles
+
+# Initialize the output rasters. These will store wind exposure values that we
+# are looking for
+s135 <- demNC
+s180 <- demNC
+s225 <- demNC
+s270 <- demNC
+values(s135) <- 0
+values(s180) <- 0
+values(s225) <- 0
+values(s270) <- 0
+
+# Process DEM by row
+iter <- 1:nrow(demNC)
+r <- res(demNC)[1]
+
+for (i in iter) {
+  # Define a moving strip of the DEM
+  full_ext <- ext(demNC)
+  ymax <- full_ext[4] - (i*r)
+  ymin <- ymax - (i*r + max.dist + r)
+  temp.extent <- ext(full_ext[1], full_ext[2], ymin, ymax)
+
+  # Check overlap and skip if there is none
+  if (is.null(intersect(ext(demNC), temp.extent))) {
+    next
+  }
+
+  # Crop DEM to current strip
+  temp.dem <- crop(demNC, temp.extent)
+
+  # Run wind exposure model for each direction
+  temp1 <- windout.iter.2(temp.dem, deflect, angles[1], max.dist)[[1]]
+  cell_ids <- windout.iter.2(temp.dem, deflect, angles[1], max.dist)[[2]]
+  idx <- cellFromXY(demNC, cell_ids)
+  s135[idx] <- temp1
+
+  temp2 <- windout.iter.2(temp.dem, deflect, angles[2], max.dist)[[1]]
+  idx <- cellFromXY(demNC, windout.iter.2(temp.dem, deflect, angles[2], max.dist)[[2]])
+  s180[idx] <- temp2
+
+  temp3 <- windout.iter.2(temp.dem, deflect, angles[3], max.dist)[[1]]
+  idx <- cellFromXY(demNC, windout.iter.2(temp.dem, deflect, angles[3], max.dist)[[2]])
+  s225[idx] <- temp3
+
+  temp4 <- windout.iter.2(temp.dem, deflect, angles[4], max.dist)[[1]]
+  idx <- cellFromXY(demNC, windout.iter.2(temp.dem, deflect, angles[4], max.dist)[[2]])
+  s270[idx] <- temp4
+}
+
+# Check it out
+plot(s135)
+plot(s180)
+plot(s225)
+plot(s270)
+
+# writeRaster(s225,
+#             filename = "C:/Users/lagoodal/Desktop/Dissertation Stuff/Hurricane/wind_exposure_225.tif",
+#             overwrite = TRUE,
+#             NAflag = 0,
+#             datatype = "INT2S")
+
+```
