@@ -1,7 +1,7 @@
 ; LANDIS-II Extension infomation
 #define CoreRelease "LANDIS-II-V8"
 #define ExtensionName "Hurricane"
-#define AppVersion "3.0"
+#define AppVersion "3.1"
 #define AppPublisher "LANDIS-II Foundation"
 #define AppURL "http://www.landis-ii.org/"
 
@@ -47,12 +47,6 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 ; (The name of this .dll is defined in the extension's \src\*.csproj file)
 Source: {#BuildDir}\Landis.Extension.Hurricane-v3.dll; DestDir: {#ExtDir}; Flags: ignoreversion
 Source: {#BuildDir}\Landis.Extension.Hurricane-v3.pdb; DestDir: {#ExtDir}; Flags: ignoreversion
-
-; Requisite auxiliary libraries
-; NB. These libraries are used by other extensions and thus are never uninstalled.
-; Source: {#BuildDir}\Landis.Library.Metadata-v2.dll; DestDir: {#ExtDir}; Flags: uninsneveruninstall 
-; Source: {#BuildDir}\Landis.Library.UniversalCohorts-v1.dll; DestDir: {#ExtDir}; Flags: uninsneveruninstall 
-
 
 ; LANDIS-II identifies the extension with the info in this .txt file
 ; NB. New releases must modify the name of this file and the info in it

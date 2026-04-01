@@ -1,7 +1,7 @@
 LandisData   Extension
 
 Name         "Hurricane"
-Version      "3.0"
+Version      "3.1"
 Type         disturbance:hurricane
 Assembly     Landis.Extension.Hurricane-v3
 Class        Landis.Extension.Hurricane.PlugIn

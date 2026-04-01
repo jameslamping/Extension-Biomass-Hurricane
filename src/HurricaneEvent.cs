@@ -226,8 +226,7 @@ namespace Landis.Extension.Hurricane
         }
 
 
-        int IDisturbance.ReduceOrKillMarkedCohort(ICohort cohort)
-        //bool ICohortDisturbance.MarkCohortForDeath(ICohort cohort)
+        double IDisturbance.ReduceOrKillMarkedCohort(ICohort cohort)
         {
 
             this.AvailableCohorts++;
@@ -248,10 +247,10 @@ namespace Landis.Extension.Hurricane
                 this.BiomassMortality += cohortBiomass;  
                 SiteVars.BiomassMortality[this.currentSite] += (int) cohortBiomass;
                 //PlugIn.ModelCore.UI.WriteLine("   Hurricane Mortality:  {0}:{1}, Wind={2}, Pmort={3}, random={4}, spp={5}", name, age, windSpeed, deathLiklihood, randomVar, cohort.Species.Name);
-                return cohort.Data.Biomass;
+                return 1.0; // indicates total mortality
             }
 
-            return 0;
+            return 0.0;  // no mortality
 
         }
 
